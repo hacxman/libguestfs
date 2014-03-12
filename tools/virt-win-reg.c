@@ -25,7 +25,7 @@
 #include <getopt.h>
 #include <guestfs.h>
 
-//#include <hivex.h>
+#include <hivex.h>
 
 void usage(char *pname) {
   printf("This program can export and merge Windows Registry entries from a\n"
@@ -209,6 +209,10 @@ int main(int argc, char * argv[]) {
   char * key = argv[optind+1];
 
   guestfs_h *g = guestfs_create();
+  if (!g) {
+    fprintf(stderr, "failik\n");
+    exit(1);
+  }
   // for now, implement only local file variant, we miss other 2
   fprintf(stderr, "domname_or_image = %s\n", domname_or_image);
   guestfs_add_drive(g, domname_or_image);
@@ -225,6 +229,30 @@ int main(int argc, char * argv[]) {
 
   do {
     printf("%s\n", *osit);
-  } while (++osit != NULL);
+  } while (*(++osit) != NULL);
+
+  char ** mps = guestfs_inspect_get_mountpoints(g, oses[0]);
+  char ** mpit = mps;
+
+  do {
+    printf("%s\n", *mpit);
+//    guestfs_mount_options(g, merge ? "" : "ro", *mpit, *(++mpit));
+
+  } while (*(++mpit) != NULL);
+
+  fprintf(stderr, "inspecting system root for windows\n");
+  char * systemroot = guestfs_inspect_get_windows_systemroot(g, oses[0]);
+  if (!systemroot) {
+    fprintf(stderr, "system root neni windows pico\n");
+    exit(1);
+  }
+  fprintf(stderr, "%s\n", systemroot);
+
+  // create a tempdir
+  char * tmpdir = mkdtemp("virt-win-reg.XXXXXX");
+  fprintf(stderr, "%s\n", tmpdir);
+
+  guestfs_shutdown (g);
+  guestfs_close (g);
 
 }
