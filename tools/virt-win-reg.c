@@ -23,9 +23,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <math.h>
 #include <guestfs.h>
 
 #include <hivex.h>
+
+#define MAX(x,y) (x >= y ? x : y)
 
 void usage(char *pname) {
   printf("This program can export and merge Windows Registry entries from a\n"
@@ -129,6 +132,9 @@ void usage(char *pname) {
     "        be passed into another program or stored in another Registry.\n"
     , pname);
 }
+
+//void export_mode(void);
+//void import_mode(void);
 
 int main(int argc, char * argv[]) {
   char *connect;
@@ -249,10 +255,58 @@ int main(int argc, char * argv[]) {
   fprintf(stderr, "%s\n", systemroot);
 
   // create a tempdir
-  char * tmpdir = mkdtemp("virt-win-reg.XXXXXX");
+  fprintf(stderr, "creating tempdir!\n");
+  char * tmpdir = malloc(strlen("virt-win-reg.XXXXXX")+1);
+  strcpy(tmpdir, "virt-win-reg.XXXXXX");
+  tmpdir = mkdtemp(tmpdir);
   fprintf(stderr, "%s\n", tmpdir);
+
+  fprintf(stderr, "shutting down!\n");
+
+//  if (!merge) {
+//    export_mode();
+//  } else {
+//    import_mode();
+//  }
+
 
   guestfs_shutdown (g);
   guestfs_close (g);
 
+  rmdir(tmpdir);
+
+  return 0;
 }
+
+int str_has_prefix(char *a, char *b) {
+  int n = strlen(a);
+  return strncmp(a, b, n) ? n : 0;
+}
+
+char ** map_path_to_hive(char * path, char * systemroot) {
+  char ** result = malloc(sizeof(char*) * 4);
+  char * hiveshortname = result[0];
+  char * hivefile = result[1];
+  char * new_path = result[2];
+  char * prefix = result[3];
+  int idx0, idx1;
+  if ((idx0 = str_has_prefix("\\HKEY_LOCAL_MACHINE\\SAM", path)) ||
+      (idx1 = str_has_prefix("\\HKLM\\SAM", path))) {
+    hiveshortname = strdup("sam");
+    hivefile = malloc(strlen(systemroot) + strlen("/system32/config/") +
+        strlen(hiveshortname) + 1);
+    hivefile = strcat(strcat(strcat(hivefile, systemroot),
+          "/system32/config/"),
+        hiveshortname);
+    new_path = strdup(path + MAX(idx0, idx1));
+    if (*new_path == 0) {
+      new_path = strdup("\\");
+    }
+    prefix = strdup("HKEY_LOCAL_MACHINE\\SAM");
+  }
+
+}
+
+void export_mode(char *path, char *name) {
+//  char ** mapping = map_path_to_hive(path);
+};
