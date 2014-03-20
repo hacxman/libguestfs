@@ -29,6 +29,7 @@
 #include <hivex.h>
 
 #define MAX(x,y) (x >= y ? x : y)
+#define MIN(x,y) (x <= y ? x : y)
 
 void usage(char *pname) {
   printf("This program can export and merge Windows Registry entries from a\n"
@@ -136,6 +137,206 @@ void usage(char *pname) {
 //void export_mode(void);
 //void import_mode(void);
 
+int str_has_prefix(char *a, char *b) {
+  int n = MIN(strlen(a), strlen(b));
+  int k = strncmp(a, b, n) == 0 ? n : 0;
+  return k;
+}
+
+void download_hive(char * hivefile, char * hiveshortname, char * tmpdir) {
+  char * winfile = guestfs_case_sensitive_path(g, hivefile);
+  char * localpath = calloc(strlen(tmpdir) + strlen(hiveshortname) + 1, 1);
+
+  strcat(strcat(localpath, tmpdir), hiveshortname);
+  if (guestfs_download(g, winfile, localpath)) {
+    fprintf(stderr, "virt-win-reg: %s: could not download registry file\n",
+        winfile);
+    // TODO add explanation of error
+  };
+}
+
+char * strcasesubst(char * haystack, char * needle, char * substitute) {
+  char * pos = strcasestr(haystack, needle);
+  if (!pos) return NULL;
+
+  size_t len = strlen(needle);
+
+  char * newstring = calloc(strlen(haystack) - strlen(needle) +
+      strlen(substitute) + 1);
+
+  strcat(strcat(strncat(newstring, haystack, pos-haystack), substitute),
+      haystack+len);
+
+  return newstring;
+}
+
+void lookup_pip_of_user_sid(char * sid, char * tmpdir, char * systemroot) {
+  char * path_prefix = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\";
+  char * path = calloc(strlen(path_prefix) + strlen(sid) + 1, 1);
+  strcat(strcat(path, path_prefix), sid);
+
+  char ** mapping = map_path_to_hive(path);
+  if (!mapping) {
+    fprintf(stderr, "map_path_to_hive failed (got null)\n");
+    exit(1);
+  }
+  char * hiveshortname = mapping[0];
+  char * hivefile = mapping[1];
+  path = mapping[2];
+  char * prefix = mapping[3];
+
+  download_hive(mapping[1], mapping[0]);
+  char * cmd = calloc(strlen("hivexget") + strlen(tmpdir) + strlen(hivexget) +
+      strlen("ProfileImagePath") + 1);
+  fprintf(stderr, "running %s\n", cmd);
+
+  FILE * fpipe = popen(cmd, "r");
+  if (!fpipe) {
+    fprintf(stderr, "failed to run '%s'\n", cmd);
+    exit(1);
+  }
+  char * line = NULL;
+  size_t llen = 0;
+  ssize_t read;
+
+  while ((read = getline(&line, &llen, fpipe)) != -1) {
+    char * nstr, nstr2 = strcasesubst(line, "\%systemroot\%", systemroot);
+    nstr2 = strcasesubst(nstr, "\%systemdrive\%", "");
+    free(nstr);
+    nstr = strcasesubst(nstr2, "^c:", "");
+    free(nstr2);
+    nstr2 = strcasesubst(nstr, "\\", "/");
+    free(nstr);
+  }
+  free(line);
+  pclose(fpipe);
+
+  return nstr2;
+}
+
+char ** match_and_extract(char * path, char * systemroot, char * new_prefix,
+                          char * shortname, char *match0, char *match1,
+                          char * match_suffix) {
+  char ** result = malloc(sizeof(char*) * 5);
+  char ** hiveshortname = &result[0];
+  char ** hivefile = &result[1];
+  char ** new_path = &result[2];
+  char ** prefix = &result[3];
+  result[4] = NULL;
+  int idx0 = 0, idx1 = 0;
+  char *prefix_to_match = calloc(strlen(match0) + 1, 1);
+  prefix_to_match = strncpy(prefix_to_match, match0, strlen(match0));
+  prefix_to_match = strcat(prefix_to_match, match_suffix);
+  printf("prefix_to_match: '%s'\n", prefix_to_match);
+  idx0 = str_has_prefix(prefix_to_match, path);
+
+
+  prefix_to_match = calloc(strlen(match1) + 1, 1);
+  prefix_to_match = strncpy(prefix_to_match, match1, strlen(match1));
+  prefix_to_match = strcat(prefix_to_match, match_suffix);
+  printf("prefix_to_match: '%s'\n", prefix_to_match);
+  idx1 = str_has_prefix(prefix_to_match, path);
+
+
+  //idx1 = str_has_prefix("\\HKLM\\SAM", path);
+  if (idx0 || idx1) {
+    *hiveshortname = strdup(shortname);
+    *hivefile = calloc(strlen(systemroot) + strlen("/system32/config/") +
+        strlen(*hiveshortname) + 1, 1);
+    *hivefile = strcat(strcat(strcat(*hivefile, systemroot),
+          "/system32/config/"),
+        *hiveshortname);
+    *new_path = strdup(path + MAX(idx0, idx1));
+    if (*new_path == 0) {
+      *new_path = strdup("\\");
+    }
+    *prefix = strdup(new_prefix);
+    printf("match_and_extract for %s at %s SUCCEEDS.\n", path, systemroot);
+  } else {
+    printf("match_and_extract for %s at %s failed.\n", path, systemroot);
+    return NULL;
+  }
+
+  return result;
+}
+
+char ** map_path_to_hive(char * path, char * systemroot) {
+  char ** result = malloc(sizeof(char*) * 5);
+  char ** hiveshortname = &result[0];
+  char ** hivefile = &result[1];
+  char ** new_path = &result[2];
+  char ** prefix = &result[3];
+  result[4] = NULL;
+
+  int idx0 = 0, idx1 = 0;
+  idx0 = str_has_prefix("\\HKEY_LOCAL_MACHINE\\SAM", path);
+  idx1 = str_has_prefix("\\HKLM\\SAM", path);
+  if (idx0 || idx1) {
+    *hiveshortname = strdup("sam");
+    *hivefile = calloc(strlen(systemroot) + strlen("/system32/config/") +
+        strlen(*hiveshortname) + 1, 1);
+    *hivefile = strcat(strcat(strcat(*hivefile, systemroot),
+          "/system32/config/"),
+        *hiveshortname);
+    *new_path = strdup(path + MAX(idx0, idx1));
+    if (*new_path == 0) {
+      *new_path = strdup("\\");
+    }
+    *prefix = strdup("HKEY_LOCAL_MACHINE\\SAM");
+  }
+
+  char ** other_result;
+  if (other_result = match_and_extract(path, systemroot,
+      "HKEY_LOCAL_MACHINE\\SAM", "sam", "\\HKEY_LOCAL_MACHINE\\",
+      "\\HKLM\\", "SAM")) {
+
+    for (int k=0; k<4; k++) {
+      printf("%s vs. %s\n", result[k], other_result[k]);
+    }
+  }
+  if (other_result = match_and_extract(path, systemroot,
+      "HKEY_LOCAL_MACHINE\\SECURITY", "security", "\\HKEY_LOCAL_MACHINE\\",
+      "\\HKLM\\", "SECURITY")) {
+
+    for (int k=0; k<4; k++) {
+      printf("lala: %s\n", other_result[k]);
+    }
+  }
+  if (other_result = match_and_extract(path, systemroot,
+      "HKEY_LOCAL_MACHINE\\SOFTWARE", "software", "\\HKEY_LOCAL_MACHINE\\",
+      "\\HKLM\\", "SOFTWARE")) {
+
+    for (int k=0; k<4; k++) {
+      printf("lala: %s\n", other_result[k]);
+    }
+  }
+  if (other_result = match_and_extract(path, systemroot,
+      "HKEY_LOCAL_MACHINE\\SYSTEM", "system", "\\HKEY_LOCAL_MACHINE\\",
+      "\\HKLM\\", "SYSTEM")) {
+
+    for (int k=0; k<4; k++) {
+      printf("lala: %s\n", other_result[k]);
+    }
+  }
+  if (other_result = match_and_extract(path, systemroot,
+      "HKEY_LOCAL_MACHINE\\.DEFAULT", "default", "\\HKEY_USERS\\",
+      "\\HKU\\", ".DEFAULT")) {
+
+    for (int k=0; k<4; k++) {
+      printf("lala: %s\n", other_result[k]);
+    }
+  }
+  // TODO, implement next case. now we need lookup_pip_of_user_id
+
+//  printf("new_path=%s\n", *new_path);
+  printf("idx=%i %i\n", idx0, idx1);
+  return other_result;
+}
+
+void export_mode(char *path, char *name) {
+//  char ** mapping = map_path_to_hive(path);
+};
+
 int main(int argc, char * argv[]) {
   char *connect;
   int debug = 0;
@@ -233,18 +434,24 @@ int main(int argc, char * argv[]) {
     exit(1);
   }
 
-  do {
+  while (*osit != NULL) {
     printf("%s\n", *osit);
-  } while (*(++osit) != NULL);
+    osit++;
+  };
 
   char ** mps = guestfs_inspect_get_mountpoints(g, oses[0]);
   char ** mpit = mps;
 
-  do {
+  if (!mps) {
+    printf("guestfs_inspect_get_mountpoints failed\n");
+    exit(1);
+  }
+
+  while (*mpit != NULL) {
     printf("%s\n", *mpit);
 //    guestfs_mount_options(g, merge ? "" : "ro", *mpit, *(++mpit));
-
-  } while (*(++mpit) != NULL);
+    mpit++; mpit++;
+  }
 
   fprintf(stderr, "inspecting system root for windows\n");
   char * systemroot = guestfs_inspect_get_windows_systemroot(g, oses[0]);
@@ -256,13 +463,20 @@ int main(int argc, char * argv[]) {
 
   // create a tempdir
   fprintf(stderr, "creating tempdir!\n");
-  char * tmpdir = malloc(strlen("virt-win-reg.XXXXXX")+1);
+  char * tmpdir = malloc(strlen("virt-win-reg.XXXXXX") + 1);
   strcpy(tmpdir, "virt-win-reg.XXXXXX");
   tmpdir = mkdtemp(tmpdir);
   fprintf(stderr, "%s\n", tmpdir);
 
   fprintf(stderr, "shutting down!\n");
 
+  char ** res = map_path_to_hive("\\HKU\\.DEFAULT\\chuj", systemroot);
+  char ** resit = res;
+  while (*resit != NULL) {
+    printf("%s [%d]\n", *resit, resit - res);
+    resit++;
+    printf("picu\n");
+  }
 //  if (!merge) {
 //    export_mode();
 //  } else {
@@ -270,6 +484,7 @@ int main(int argc, char * argv[]) {
 //  }
 
 
+  printf("shutting down\n");
   guestfs_shutdown (g);
   guestfs_close (g);
 
@@ -277,36 +492,3 @@ int main(int argc, char * argv[]) {
 
   return 0;
 }
-
-int str_has_prefix(char *a, char *b) {
-  int n = strlen(a);
-  return strncmp(a, b, n) ? n : 0;
-}
-
-char ** map_path_to_hive(char * path, char * systemroot) {
-  char ** result = malloc(sizeof(char*) * 4);
-  char * hiveshortname = result[0];
-  char * hivefile = result[1];
-  char * new_path = result[2];
-  char * prefix = result[3];
-  int idx0, idx1;
-  if ((idx0 = str_has_prefix("\\HKEY_LOCAL_MACHINE\\SAM", path)) ||
-      (idx1 = str_has_prefix("\\HKLM\\SAM", path))) {
-    hiveshortname = strdup("sam");
-    hivefile = malloc(strlen(systemroot) + strlen("/system32/config/") +
-        strlen(hiveshortname) + 1);
-    hivefile = strcat(strcat(strcat(hivefile, systemroot),
-          "/system32/config/"),
-        hiveshortname);
-    new_path = strdup(path + MAX(idx0, idx1));
-    if (*new_path == 0) {
-      new_path = strdup("\\");
-    }
-    prefix = strdup("HKEY_LOCAL_MACHINE\\SAM");
-  }
-
-}
-
-void export_mode(char *path, char *name) {
-//  char ** mapping = map_path_to_hive(path);
-};
