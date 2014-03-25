@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <math.h>
+#include <sys/stat.h>
 #include <guestfs.h>
 
 #include <hivex.h>
@@ -137,13 +138,29 @@ void usage(char *pname) {
 //void export_mode(void);
 //void import_mode(void);
 
+char ** map_path_to_hive(char * path, char * systemroot);
+
+int is_dir_nocase(guestfs_h * g, char * dir) {
+  char * windir;
+  if (!(windir = guestfs_case_sensitive_path(g, dir))) {
+    return 0;
+  };
+
+  return guestfs_is_dir(g, windir);
+}
+
 int str_has_prefix(char *a, char *b) {
+  int la = strlen(a);
   int n = MIN(strlen(a), strlen(b));
+  if (la > n) {
+    return 0;
+  }
   int k = strncmp(a, b, n) == 0 ? n : 0;
   return k;
 }
 
-void download_hive(char * hivefile, char * hiveshortname, char * tmpdir) {
+void download_hive(guestfs_h * g, char * hivefile, char * hiveshortname,
+    char * tmpdir) {
   char * winfile = guestfs_case_sensitive_path(g, hivefile);
   char * localpath = calloc(strlen(tmpdir) + strlen(hiveshortname) + 1, 1);
 
@@ -152,8 +169,44 @@ void download_hive(char * hivefile, char * hiveshortname, char * tmpdir) {
     fprintf(stderr, "virt-win-reg: %s: could not download registry file\n",
         winfile);
     // TODO add explanation of error
+    exit(1);
   };
 }
+
+void upload_hive(guestfs_h * g, char * hiveshortname, char * hivefile,
+    char * tmpdir) {
+  char * winfile = guestfs_case_sensitive_path(hivefile);
+
+  size_t inflen = strlen(tmpdir) + strlen(hiveshortname) + 2;
+  char * infile = calloc(inflen);
+  snprintf(infile, inflen, "%s/%s", tmpdir, hiveshortname);
+  if (guestfs_upload(g, infile, winfile)) {
+    fprintf(stderr, "virt-win-reg: %s: could not upload registry file\n",
+        winfile);
+    exit(1);
+  };
+}
+
+void import_mapper(char * wtf) {
+  // perl is retarded
+  char ** mapping = map_path_to_hive(wtf, NULL);
+  char * hiveshortname = mapping[0];
+  char * hivefile = mapping[1];
+  char * path = mapping[2];
+  char * prefix = mapping[3];
+
+  size_t flen = strlen(tmpdir) + strlen(hiveshortname) + 2;
+  char * fil = calloc(flen);
+  snprintf(fil, flen, "%s/%s", tmpdir, hiveshortname);
+
+  struct stat statbuf;
+  if (stat(fil, &statbuf)) {
+    download_hive(hivefile, hiveshortname);
+  } else {
+    hive_h * h = hivex_open(fil, HIVEX_OPEN_WRITE | HIVEX_OPEN_DEBUG);
+    // commit harakiri constructing perls hash equivalent
+  }
+};
 
 char * strcasesubst(char * haystack, char * needle, char * substitute) {
   char * pos = strcasestr(haystack, needle);
@@ -162,7 +215,7 @@ char * strcasesubst(char * haystack, char * needle, char * substitute) {
   size_t len = strlen(needle);
 
   char * newstring = calloc(strlen(haystack) - strlen(needle) +
-      strlen(substitute) + 1);
+      strlen(substitute) + 1, 1);
 
   strcat(strcat(strncat(newstring, haystack, pos-haystack), substitute),
       haystack+len);
@@ -170,12 +223,14 @@ char * strcasesubst(char * haystack, char * needle, char * substitute) {
   return newstring;
 }
 
-void lookup_pip_of_user_sid(char * sid, char * tmpdir, char * systemroot) {
-  char * path_prefix = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\";
+char * lookup_pip_of_user_sid(guestfs_h * g, char * sid, char * tmpdir,
+    char * systemroot) {
+  char * path_prefix = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\"
+    "CurrentVersion\\ProfileList\\";
   char * path = calloc(strlen(path_prefix) + strlen(sid) + 1, 1);
   strcat(strcat(path, path_prefix), sid);
 
-  char ** mapping = map_path_to_hive(path);
+  char ** mapping = map_path_to_hive(path, systemroot);
   if (!mapping) {
     fprintf(stderr, "map_path_to_hive failed (got null)\n");
     exit(1);
@@ -185,9 +240,14 @@ void lookup_pip_of_user_sid(char * sid, char * tmpdir, char * systemroot) {
   path = mapping[2];
   char * prefix = mapping[3];
 
-  download_hive(mapping[1], mapping[0]);
-  char * cmd = calloc(strlen("hivexget") + strlen(tmpdir) + strlen(hivexget) +
-      strlen("ProfileImagePath") + 1);
+  download_hive(g, mapping[1], mapping[0], tmpdir);
+  // 0 + spaces + slash
+  size_t cmdlen = strlen("hivexget") + strlen(tmpdir) +
+      strlen(hiveshortname) + strlen("ProfileImagePath") + 1 + 3 + 1;
+  char * cmd = calloc(cmdlen, 1);
+
+  snprintf(cmd, cmdlen, "hivexget %s/%s %s",
+      tmpdir, hiveshortname, path, "ProfileImagePath");
   fprintf(stderr, "running %s\n", cmd);
 
   FILE * fpipe = popen(cmd, "r");
@@ -199,14 +259,23 @@ void lookup_pip_of_user_sid(char * sid, char * tmpdir, char * systemroot) {
   size_t llen = 0;
   ssize_t read;
 
+  char * nstr, * nstr2;
   while ((read = getline(&line, &llen, fpipe)) != -1) {
-    char * nstr, nstr2 = strcasesubst(line, "\%systemroot\%", systemroot);
+    // s/%systemroot%/$systemroot/i
+    nstr = strcasesubst(line, "\%systemroot\%", systemroot);
+    // s/%systemdrive%//i
     nstr2 = strcasesubst(nstr, "\%systemdrive\%", "");
     free(nstr);
+    // s/^c://i
     nstr = strcasesubst(nstr2, "^c:", "");
     free(nstr2);
-    nstr2 = strcasesubst(nstr, "\\", "/");
-    free(nstr);
+    // s,\\,/,g
+    //nstr2 = strcasesubst(nstr, "\\", "/");
+    //free(nstr);
+    char * p = nstr;
+    while(p = strrchr(p, '\\')) {
+      *p = '/';
+    }
   }
   free(line);
   pclose(fpipe);
@@ -293,6 +362,7 @@ char ** map_path_to_hive(char * path, char * systemroot) {
     for (int k=0; k<4; k++) {
       printf("%s vs. %s\n", result[k], other_result[k]);
     }
+    return other_result;
   }
   if (other_result = match_and_extract(path, systemroot,
       "HKEY_LOCAL_MACHINE\\SECURITY", "security", "\\HKEY_LOCAL_MACHINE\\",
@@ -301,6 +371,7 @@ char ** map_path_to_hive(char * path, char * systemroot) {
     for (int k=0; k<4; k++) {
       printf("lala: %s\n", other_result[k]);
     }
+    return other_result;
   }
   if (other_result = match_and_extract(path, systemroot,
       "HKEY_LOCAL_MACHINE\\SOFTWARE", "software", "\\HKEY_LOCAL_MACHINE\\",
@@ -309,6 +380,7 @@ char ** map_path_to_hive(char * path, char * systemroot) {
     for (int k=0; k<4; k++) {
       printf("lala: %s\n", other_result[k]);
     }
+    return other_result;
   }
   if (other_result = match_and_extract(path, systemroot,
       "HKEY_LOCAL_MACHINE\\SYSTEM", "system", "\\HKEY_LOCAL_MACHINE\\",
@@ -317,6 +389,7 @@ char ** map_path_to_hive(char * path, char * systemroot) {
     for (int k=0; k<4; k++) {
       printf("lala: %s\n", other_result[k]);
     }
+    return other_result;
   }
   if (other_result = match_and_extract(path, systemroot,
       "HKEY_LOCAL_MACHINE\\.DEFAULT", "default", "\\HKEY_USERS\\",
@@ -325,8 +398,9 @@ char ** map_path_to_hive(char * path, char * systemroot) {
     for (int k=0; k<4; k++) {
       printf("lala: %s\n", other_result[k]);
     }
+    return other_result;
   }
-  // TODO, implement next case. now we need lookup_pip_of_user_id
+  // TODO, implement next case. now we need lookup_pip_of_user_sid. DONE(?)
 
 //  printf("new_path=%s\n", *new_path);
   printf("idx=%i %i\n", idx0, idx1);
@@ -334,7 +408,22 @@ char ** map_path_to_hive(char * path, char * systemroot) {
 }
 
 void export_mode(char *path, char *name) {
-//  char ** mapping = map_path_to_hive(path);
+  char ** mapping = map_path_to_hive(path);
+  char ** hiveshortname = &result[0];
+  char ** hivefile = &result[1];
+  char ** new_path = &result[2];
+  char ** prefix = &result[3];
+
+  size_t flen = strlen(tmpdir) + strlen(hiveshortname) + 2;
+  char * fil = calloc(flen);
+  snprintf(fil, flen, "%s/%s", tmpdir, hiveshortname);
+
+  download_hive(hivefile, hiveshortname);
+  hive_h * h = hivex_open(fil, HIVEX_OPEN_DEBUG);
+
+  // TODO
+  reg_export(h, new_path,);
+
 };
 
 int main(int argc, char * argv[]) {
