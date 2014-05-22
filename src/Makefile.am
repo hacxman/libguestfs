@@ -118,6 +118,7 @@ libguestfs_la_SOURCES = \
 	libvirt-auth.c \
 	libvirt-domain.c \
 	listfs.c \
+	locks.c \
 	lpj.c \
 	match.c \
 	osinfo.c \
