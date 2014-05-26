@@ -39,17 +39,36 @@ gl_lock_define_initialized (static, locks_lock);
 static guestfs_h ** handles;
 static size_t n_handles;
 
+typeof(*per_handle_locks)
+guestfs___lookup_lock_or_abort (guestfs_h *g)
+{
+  // this function should be called with locks_lock already held
+  for (size_t i = 0; i < n_handles; i++) {
+    if (handles[i] == g) {
+      return per_handle_locks[i];
+    }
+  }
+  // handle not found. aborting
+  abort();
+}
+
 void
 guestfs___per_handle_lock_is_not_held (guestfs_h *g)
 {
+  // this function should be called with locks_lock already held
+
+  typeof(*per_handle_locks) l = guestfs___lookup_lock_or_abort(g);
+  gl_lock_lock(l);
+  gl_lock_unlock(l);
+
   // TODO factor-out for as lookup_handle
-  for (size_t i = 0; i < n_handles; i++) {
+/*  for (size_t i = 0; i < n_handles; i++) {
     if (handles[i] == g) {
       gl_lock_lock(per_handle_locks[i]);
       gl_lock_unlock(per_handle_locks[i]);
       return;
     }
-  }
+  } */
   // TODO error in case handle was not found
 }
 
