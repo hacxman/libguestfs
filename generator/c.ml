@@ -788,12 +788,17 @@ and generate_internal_actions_h () =
   pr "#define GUESTFS_INTERNAL_ACTIONS_H_\n";
   pr "\n";
 
+  pr "#include \"glthread/lock.h\"\n";
+  pr "\n";
+
   List.iter (
     fun { c_name = c_name; style = style } ->
       generate_prototype ~single_line:true ~newline:true ~handle:"g"
         ~prefix:"guestfs__" ~optarg_proto:Argv
         c_name style
   ) non_daemon_functions;
+
+  pr "gl_lock_define(extern, *per_handle_locks)";
 
   pr "\n";
   pr "#endif /* GUESTFS_INTERNAL_ACTIONS_H_ */\n"
