@@ -788,6 +788,9 @@ and generate_internal_actions_h () =
   pr "#define GUESTFS_INTERNAL_ACTIONS_H_\n";
   pr "\n";
 
+  pr "#include \"locking.h\"\n";
+  pr "\n";
+
   List.iter (
     fun { c_name = c_name; style = style } ->
       generate_prototype ~single_line:true ~newline:true ~handle:"g"
@@ -1569,6 +1572,9 @@ and generate_client_actions hash () =
 
     handle_null_optargs optargs c_name;
 
+    pr "  guestfs___per_handle_lock_lock (g);\n";
+    pr "\n";
+
     pr "  int trace_flag = g->trace;\n";
     pr "  struct trace_buffer trace_buffer;\n";
     (match ret with
@@ -1617,6 +1623,10 @@ and generate_client_actions hash () =
       trace_return name style "r";
     );
     pr "\n";
+
+    pr "  guestfs___per_handle_lock_unlock (g);\n";
+    pr "\n";
+
     pr "  return r;\n";
     pr "}\n";
     pr "\n"

@@ -84,6 +84,8 @@ guestfs_create_flags (unsigned flags, ...)
   g = calloc (1, sizeof (*g));
   if (!g) return NULL;
 
+  guestfs___per_handle_lock_add (g);
+
   g->state = CONFIG;
 
   g->conn = NULL;
@@ -304,6 +306,8 @@ guestfs_close (guestfs_h *g)
     fprintf (stderr, _("guestfs_close: called twice on the same handle\n"));
     return;
   }
+
+  guestfs___per_handle_lock_remove (g);
 
   /* Remove the handle from the handles list. */
   if (g->close_on_exit) {
