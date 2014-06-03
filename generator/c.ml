@@ -1572,7 +1572,8 @@ and generate_client_actions hash () =
 
     handle_null_optargs optargs c_name;
 
-    pr "  guestfs___per_handle_lock_lock (g);\n";
+(*    pr "  guestfs___per_handle_lock_lock (g);\n"; *)
+    pr "  gl_recursive_lock_lock (g->global_lock);\n";
     pr "\n";
 
     pr "  int trace_flag = g->trace;\n";
@@ -1624,7 +1625,8 @@ and generate_client_actions hash () =
     );
     pr "\n";
 
-    pr "  guestfs___per_handle_lock_unlock (g);\n";
+    (* pr "  guestfs___per_handle_lock_unlock (g);\n"; *)
+    pr "  gl_recursive_lock_unlock (g->global_lock);\n";
     pr "\n";
 
     pr "  return r;\n";
