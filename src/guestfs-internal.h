@@ -32,6 +32,7 @@
 #include <libvirt/libvirt.h>
 #endif
 
+#include "glthread/lock.h"
 #include "hash.h"
 
 #include "guestfs-internal-frontend.h"
@@ -493,6 +494,8 @@ struct guestfs_h
   unsigned int nr_requested_credentials;
   virConnectCredentialPtr requested_credentials;
 #endif
+
+  gl_recursive_lock_t global_lock;
 };
 
 /* Per-filesystem data stored for inspect_os. */
