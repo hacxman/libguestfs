@@ -84,7 +84,8 @@ guestfs_create_flags (unsigned flags, ...)
   g = calloc (1, sizeof (*g));
   if (!g) return NULL;
 
-  guestfs___per_handle_lock_add (g);
+//  guestfs___per_handle_lock_add (g);
+  gl_recursive_lock_init (g->global_lock);
 
   g->state = CONFIG;
 
@@ -169,6 +170,7 @@ guestfs_create_flags (unsigned flags, ...)
   free (g->path);
   free (g->hv);
   free (g->append);
+  gl_recursive_lock_destroy (g->global_lock);
   free (g);
   return NULL;
 }
@@ -307,8 +309,6 @@ guestfs_close (guestfs_h *g)
     return;
   }
 
-  guestfs___per_handle_lock_remove (g);
-
   /* Remove the handle from the handles list. */
   if (g->close_on_exit) {
     gl_lock_lock (handles_lock);
@@ -378,6 +378,7 @@ guestfs_close (guestfs_h *g)
   free (g->backend_data);
   guestfs___free_string_list (g->backend_settings);
   free (g->append);
+  gl_recursive_lock_destroy (g->global_lock);
   free (g);
 }
 
