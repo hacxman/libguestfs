@@ -65,6 +65,8 @@ upload $SRCDIR/guest-aux/windows-system /Windows/System32/Config/SYSTEM
 upload $SRCDIR/../data/bin-win32.exe /Windows/System32/cmd.exe
 
 mkdir "/Program Files"
+mkdir "/Program Files (x86)"
+mkdir "/Program Files (x86)/Test test teeeest"
 touch /autoexec.bat
 
 EOF
