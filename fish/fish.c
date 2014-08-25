@@ -1478,6 +1478,10 @@ initialize_readline (void)
   rl_readline_name = "guestfish";
   rl_attempted_completion_function = do_completion;
 
+  rl_completer_quote_characters = "\"\\";
+  rl_filename_quote_characters  = " ";
+  rl_filename_quoting_desired = 1;
+
   /* Note that .inputrc (or /etc/inputrc) is not read until the first
    * call the readline(), which happens later.  Therefore, these
    * provide default values which can be overridden by the user if
