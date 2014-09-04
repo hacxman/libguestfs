@@ -265,6 +265,8 @@ toolsconf_DATA = libguestfs-tools.conf
 
 TESTS_ENVIRONMENT = $(top_builddir)/run --test
 
+bin_TESTS = test-quoting
+
 TESTS = \
 	test-a.sh \
 	test-add-domain.sh \
@@ -273,7 +275,8 @@ TESTS = \
 	test-escapes.sh \
 	test-events.sh \
 	test-invalid-params.sh \
-	test-tilde.sh
+	test-tilde.sh \
+	test-quoting
 
 if ENABLE_APPLIANCE
 TESTS += \
