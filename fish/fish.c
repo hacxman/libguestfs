@@ -945,6 +945,7 @@ static ssize_t
 parse_quoted_string (char *p)
 {
   char *start = p;
+  fprintf(stderr, "fish.c: parse_quoted_string called\n");
 
   for (; *p && *p != '"'; p++) {
     if (*p == '\\') {
@@ -962,6 +963,7 @@ parse_quoted_string (char *p)
       case '"': *p = '"'; break;
       case '\'': *p = '\''; break;
       case '?': *p = '?'; break;
+      case ' ': *p = ' '; fprintf(stderr, "found escaped space\n"); break;
 
       case '0'...'7':           /* octal escape - always 3 digits */
         m = 3;
@@ -1006,6 +1008,137 @@ parse_quoted_string (char *p)
   *p = '\0';
   return p - start;
 }
+
+
+
+
+
+
+static char *
+debsquote_filename (char *p)
+{
+  char *start = p;
+  fprintf(stderr, "fish.c: debsquote_filename called\n");
+
+  for (; *p; p++) {
+    if (*p == '\\') {
+      int m = 1, c;
+
+      switch (p[1]) {
+      case '\\': break;
+      case 'a': *p = '\a'; break;
+      case 'b': *p = '\b'; break;
+      case 'f': *p = '\f'; break;
+      case 'n': *p = '\n'; break;
+      case 'r': *p = '\r'; break;
+      case 't': *p = '\t'; break;
+      case 'v': *p = '\v'; break;
+      case '"': *p = '"'; break;
+      case '\'': *p = '\''; break;
+      case '?': *p = '?'; break;
+      case ' ': *p = ' '; fprintf(stderr, "found escaped space\n"); break;
+
+      case '0'...'7':           /* octal escape - always 3 digits */
+        m = 3;
+        if (p[2] >= '0' && p[2] <= '7' &&
+            p[3] >= '0' && p[3] <= '7') {
+          c = (p[1] - '0') * 0100 + (p[2] - '0') * 010 + (p[3] - '0');
+          if (c < 1 || c > 255)
+            goto error;
+          *p = c;
+        }
+        else
+          goto error;
+        break;
+
+      case 'x':                 /* hex escape - always 2 digits */
+        m = 3;
+        if (c_isxdigit (p[2]) && c_isxdigit (p[3])) {
+          c = hexdigit (p[2]) * 0x10 + hexdigit (p[3]);
+          if (c < 1 || c > 255)
+            goto error;
+          *p = c;
+        }
+        else
+          goto error;
+        break;
+
+      default:
+      error:
+        fprintf (stderr, _("%s: invalid escape sequence in string (starting at offset %d)\n"),
+                 program_name, (int) (p - start));
+        return -1;
+      }
+      memmove (p+1, p+1+m, strlen (p+1+m) + 1);
+    }
+  }
+
+  if (!*p) {
+    fprintf (stderr, _("%s: unterminated double quote\n"), program_name);
+    return -1;
+  }
+
+  *p = '\0';
+  return p - start;
+}
+
+
+static char *
+bsquote_filename (char *p)
+{
+  char *start = p;
+  fprintf(stderr, "fish.c: bsquote_filename called\n");
+  // four times original length - if all chars are unprintable
+  // new string would be 0xXY0xWZ
+  char *n = malloc(strlen(p) * 4 + 1);
+
+  for (; *p; p++) {
+//    if (*p == '\\') {
+      int m = 1, c;
+
+      switch (*p) {
+      case '\\': break;
+      case '\a': *n = '\a'; break;
+      case '\b': *n = '\b'; break;
+      case '\f': *n = '\f'; break;
+      case '\n': *n = '\n'; break;
+      case '\r': *n = '\r'; break;
+      case '\t': *n = '\t'; break;
+      case '\v': *n = '\v'; break;
+      case '"': *n = '"'; break;
+      case '\'': *n = '\''; break;
+      case '?': *n = '?'; break;
+      case ' ': *n = ' '; fprintf(stderr, "found escaped space\n"); break;
+
+      default:
+        // Octal escape unprintable character. This violates identity
+        // after composition of bsquote_filename after debsquote_filename
+        // (i.e. can escape some characters differently).
+        if (!isprint(*p)) {
+          sprintf(n, "%o", *p);
+          int l = strlen(n);
+          n += l;
+        }
+      error:
+        fprintf (stderr, _("%s: invalid escape sequence in string (starting at offset %d)\n"),
+                 program_name, (int) (p - start));
+        return -1;
+      }
+      memmove (p+1, p+1+m, strlen (p+1+m) + 1);
+//    }
+  }
+
+  if (!*p) {
+    fprintf (stderr, _("%s: unterminated double quote\n"), program_name);
+    return -1;
+  }
+
+  *p = '\0';
+  return p - start;
+}
+
+
+
 
 /* Used to handle "<!" (execute command and inline result). */
 static int
@@ -1481,6 +1614,8 @@ initialize_readline (void)
   rl_completer_quote_characters = "\"\\";
   rl_filename_quote_characters  = " ";
   rl_filename_quoting_desired = 1;
+  rl_filename_quoting_function = bsquote_filename;
+  rl_filename_dequoting_function = debsquote_filename;
 
   /* Note that .inputrc (or /etc/inputrc) is not read until the first
    * call the readline(), which happens later.  Therefore, these
