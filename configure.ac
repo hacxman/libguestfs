@@ -1651,6 +1651,7 @@ AC_CONFIG_FILES([Makefile
                  erlang/examples/Makefile
                  examples/Makefile
                  fish/Makefile
+                 fish/test/Makefile
                  format/Makefile
                  fuse/Makefile
                  generator/Makefile
