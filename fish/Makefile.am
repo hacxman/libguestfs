@@ -106,7 +106,9 @@ guestfish_SOURCES = \
 	setenv.c \
 	supported.c \
 	tilde.c \
-	time.c
+	time.c \
+	rl.h \
+	rl.c
 
 # This convenience library is solely to compile its generated sources with
 # custom flags.
@@ -265,7 +267,7 @@ toolsconf_DATA = libguestfs-tools.conf
 
 TESTS_ENVIRONMENT = $(top_builddir)/run --test
 
-bin_TESTS = test-quoting
+#bin_TESTS = testquoting
 
 TESTS = \
 	test-a.sh \
@@ -275,8 +277,7 @@ TESTS = \
 	test-escapes.sh \
 	test-events.sh \
 	test-invalid-params.sh \
-	test-tilde.sh \
-	test-quoting
+	test-tilde.sh
 
 if ENABLE_APPLIANCE
 TESTS += \
@@ -296,6 +297,8 @@ TESTS += \
 	test-stringlist.sh \
 	test-upload-to-dir.sh
 endif
+
+testquoting_CFLAGS = -I$(top_srcdir)
 
 check-valgrind:
 	$(MAKE) TESTS="test-a.sh test-add-domain.sh test-add-uri.sh test-copy.sh test-d.sh test-edit.sh test-escapes.sh test-events.sh test-find0.sh test-glob.sh test-inspect.sh test-prep.sh test-read-file.sh test-remote.sh test-remote-events.sh test-reopen.sh test-run.sh test-stringlist.sh test-tilde.sh test-upload-to-dir.sh" VG="$(top_builddir)/run @VG@" check
