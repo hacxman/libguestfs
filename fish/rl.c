@@ -20,6 +20,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <memory.h>
 
 #include <c-ctype.h>
 
@@ -40,10 +42,11 @@ hexdigit (char d)
 
 // un-backslash quote for readline
 char *
-debsquote_filename (char *p)
+debsquote_filename (char *str)
 {
+  char *p = calloc(strlen(str) + 1, 1);
+  strcpy(p, str);
   char *start = p;
-  fprintf(stderr, "fish.c: debsquote_filename called\n");
 
   for (; *p; p++) {
     if (*p == '\\') {
@@ -61,7 +64,7 @@ debsquote_filename (char *p)
       case '"': *p = '"'; break;
       case '\'': *p = '\''; break;
       case '?': *p = '?'; break;
-      case ' ': *p = ' '; fprintf(stderr, "found escaped space\n"); break;
+      case ' ': *p = ' '; break;
 
       case '0'...'7':           /* octal escape - always 3 digits */
         m = 3;
@@ -98,13 +101,7 @@ debsquote_filename (char *p)
     }
   }
 
-  if (!*p) {
-    fprintf (stderr, ("%s: unterminated double quote\n"), program_name);
-    return -1;
-  }
-
-  *p = '\0';
-  return p - start;
+  return start;
 }
 
 // backslash quote
@@ -112,57 +109,50 @@ char *
 bsquote_filename (char *p)
 {
   char *start = p;
-  fprintf(stderr, "fish.c: bsquote_filename called\n");
   // four times original length - if all chars are unprintable
-  // new string would be 0xXY0xWZ
-  char *n = malloc(strlen(p) * 4 + 1);
+  // new string would be \xXY\xWZ
+  char *n = calloc(strlen(p) * 4 + 1, 1);
+  char *nstart = n;
   if (strlen(p) == 0) {
     n[0] = '\0';
     return n;
   }
 
-  for (; *p; p++) {
-//    if (*p == '\\') {
-      int m = 1, c;
+  for (; *p; p++, n++) {
+      int m = 1;
 
       switch (*p) {
       case '\\': break;
-      case '\a': *n = '\a'; break;
-      case '\b': *n = '\b'; break;
-      case '\f': *n = '\f'; break;
-      case '\n': *n = '\n'; break;
-      case '\r': *n = '\r'; break;
-      case '\t': *n = '\t'; break;
-      case '\v': *n = '\v'; break;
-      case '"': *n = '"'; break;
-      case '\'': *n = '\''; break;
-      case '?': *n = '?'; break;
-      case ' ': *n = ' '; fprintf(stderr, "found space\n"); break;
+      case '\a': *(n++) = '\\'; *n = 'a'; break;
+      case '\b': *(n++) = '\\'; *n = 'b'; break;
+      case '\f': *(n++) = '\\'; *n = 'f'; break;
+      case '\n': *(n++) = '\\'; *n = 'n'; break;
+      case '\r': *(n++) = '\\'; *n = 'r'; break;
+      case '\t': *(n++) = '\\'; *n = 't'; break;
+      case '\v': *(n++) = '\\'; *n = 'v'; break;
+      case '"':  *(n++) = '\\'; *n = '"'; break;
+      case '\'': *(n++) = '\\'; *n = '\''; break;
+      case '?':  *(n++) = '\\'; *n = '?'; break;
+      case ' ':  *(n++) = '\\'; *n = ' '; break;
 
       default:
-        // Octal escape unprintable character. This violates identity
+        // Hexadecimal escape unprintable character. This violates identity
         // after composition of bsquote_filename after debsquote_filename
         // (i.e. can escape some characters differently).
-        if (!isprint(*p)) {
-          sprintf(n, "%o", *p);
-          int l = strlen(n);
-          n += l;
+        if (!c_isprint(*p)) {
+          n += sprintf(n, "\\x%x", (int) (*p & 0xff)) - 1;
+        } else {
+          *n = *p;
         }
+        break;
       error:
         fprintf (stderr, ("%s: invalid escape sequence in string (starting at offset %d)\n"),
                  program_name, (int) (p - start));
         return -1;
       }
-      memmove (p+1, p+1+m, strlen (p+1+m) + 1);
-//    }
   }
 
-  if (!*p) {
-    fprintf (stderr, ("%s: unterminated double quote\n"), program_name);
-    return -1;
-  }
-
-  *p = '\0';
-  return p - start;
+  nstart = realloc(nstart, strlen(nstart));
+  return nstart;
 }
 
