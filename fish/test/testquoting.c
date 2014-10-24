@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <memory.h>
 
 #include <guestfs.h>
 #include <guestfs-internal-frontend.h>
@@ -11,13 +12,15 @@ int
 eq_bracket (char *(*fn)(char*), char * in, char * out)
 {
   char * q = fn(in);
-  if (q != NULL && q != -1) {
+  if (q != NULL && (size_t)q != -1) {
     if (STREQ(q, out)) {
       return 1;
     } else {
+//      fprintf(stderr, "'%s' != '%s'\n", q, out);
       return 0;
     }
   } else {
+//    fprintf(stderr, "'%s' != '%s'\n", q, out);
     return 0;
   }
 }
@@ -73,13 +76,13 @@ test_nonprinting_quote (void)
 int
 test_multiword_dequote (void)
 {
-  return eq_bracket(bsquote_filename, "more\\ than\\ one\\ word\\n", "more than one word\n");
+  return eq_bracket(debsquote_filename, "more\\ than\\ one\\ word", "more than one word");
 }
 
 int
 test_nonprinting_dequote (void)
 {
-  return eq_bracket(bsquote_filename, "\\xac\\xec\\b", "\xac\xec\x8");
+  return eq_bracket(debsquote_filename, "\\xac\\xec\\b", "\xac\xec\b");
 }
 
 
