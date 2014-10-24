@@ -8,11 +8,11 @@
 #include <rl.h>
 
 int
-test_empty_quote (void)
+eq_bracket (char *(*fn)(char*), char * in, char * out)
 {
-  char * q = bsquote_filename("");
+  char * q = fn(in);
   if (q != NULL && q != -1) {
-    if (STREQ(q, "")) {
+    if (STREQ(q, out)) {
       return 1;
     } else {
       return 0;
@@ -20,82 +20,69 @@ test_empty_quote (void)
   } else {
     return 0;
   }
+}
+
+int
+test_empty_quote (void)
+{
+  return eq_bracket(bsquote_filename, "", "");
 }
 
 int
 test_empty_dequote (void)
 {
-  char * q = debsquote_filename("");
-  if (q != NULL && q != -1) {
-    if (STREQ(q, "")) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else {
-    return 0;
-  }
+  return eq_bracket(debsquote_filename, "", "");
 }
 
 int
 test_singlespace_quote (void)
 {
-  char * q = bsquote_filename(" ");
-  if (q != NULL && q != -1) {
-    if (STREQ(q, "\ ")) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else {
-    return 0;
-  }
+  return eq_bracket(bsquote_filename, " ", "\\ ");
 }
 
 int
 test_singlespace_dequote (void)
 {
-  char * q = debsquote_filename("\ ");
-  if (q != NULL && q != -1) {
-    if (STREQ(q, " ")) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else {
-    return 0;
-  }
+  return eq_bracket(debsquote_filename, "\\ ", " ");
 }
 
 int
 test_singleword_quote (void)
 {
-  char * q = bsquote_filename("singleword");
-  if (q != NULL && q != -1) {
-    if (STREQ(q, "singleword")) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else {
-    return 0;
-  }
+  return eq_bracket(bsquote_filename, "singleword", "singleword");
 }
 
 int
 test_singleword_dequote (void)
 {
-  char * q = debsquote_filename("singleword");
-  if (q != NULL && q != -1) {
-    if (STREQ(q, "singleword")) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else {
-    return 0;
-  }
+  return eq_bracket(debsquote_filename, "singleword", "singleword");
 }
+
+int
+test_multiword_quote (void)
+{
+  return eq_bracket(bsquote_filename, "more than one word\n", "more\\ than\\ one\\ word\\n");
+}
+
+int
+test_nonprinting_quote (void)
+{
+  return eq_bracket(bsquote_filename, "\xac\xec\x8", "\\xac\\xec\\b");
+}
+
+int
+test_multiword_dequote (void)
+{
+  return eq_bracket(bsquote_filename, "more\\ than\\ one\\ word\\n", "more than one word\n");
+}
+
+int
+test_nonprinting_dequote (void)
+{
+  return eq_bracket(bsquote_filename, "\\xac\\xec\\b", "\xac\xec\x8");
+}
+
+
 
 struct test_t {
   char *name;
@@ -110,6 +97,10 @@ struct test_t tests[] = {
   { .name = "test single space dequote", .fn = test_singlespace_dequote, .expect = 1},
   { .name = "test single word quote", .fn = test_singleword_quote, .expect = 1},
   { .name = "test single word dequote", .fn = test_singleword_dequote, .expect = 1},
+  { .name = "test multi word quote", .fn = test_multiword_quote, .expect = 1},
+  { .name = "test nonprinting quote", .fn = test_nonprinting_quote, .expect = 1},
+  { .name = "test multi word dequote", .fn = test_multiword_dequote, .expect = 1},
+  { .name = "test nonprinting dequote", .fn = test_nonprinting_dequote, .expect = 1},
 };
 
 size_t nr_tests = sizeof(tests) / sizeof(*tests);
