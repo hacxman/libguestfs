@@ -78,6 +78,7 @@ SUBDIRS += test-tool
 
 # Guestfish.
 SUBDIRS += fish
+SUBDIRS += fish/test
 
 # virt-tools in C.
 SUBDIRS += align cat diff df edit format inspector make-fs rescue
