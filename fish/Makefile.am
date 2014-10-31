@@ -108,7 +108,9 @@ guestfish_SOURCES = \
 	setenv.c \
 	supported.c \
 	tilde.c \
-	time.c
+	time.c \
+	rl.h \
+	rl.c
 
 # This convenience library is solely to compile its generated sources with
 # custom flags.

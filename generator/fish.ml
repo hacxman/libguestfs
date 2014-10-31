@@ -740,6 +740,8 @@ and generate_fish_cmds_gperf () =
 #include <stdlib.h>
 #include <string.h>
 
+#include <ctype.h>
+
 #include \"cmds-gperf.h\"
 
 ";
@@ -848,6 +850,108 @@ generator (const char *text, int state)
 #endif
 #endif /* else just fail if we don't have either symbol */
 
+static int
+hexdigit (char d)
+{
+  switch (d) {
+  case '0'...'9': return d - '0';
+  case 'a'...'f': return d - 'a' + 10;
+  case 'A'...'F': return d - 'A' + 10;
+  default: return -1;
+  }
+}
+
+static ssize_t
+parse_quoted_string (char *p)
+{
+  char *start = p;
+
+  for (; *p && *p != '\"'; p++) {
+    if (*p == '\\\\') {
+      int m = 1, c;
+
+      switch (p[1]) {
+      case '\\\\': break;
+      case 'a': *p = '\\a'; break;
+      case 'b': *p = '\\b'; break;
+      case 'f': *p = '\\f'; break;
+      case 'n': *p = '\\n'; break;
+      case 'r': *p = '\\r'; break;
+      case 't': *p = '\\t'; break;
+      case 'v': *p = '\\v'; break;
+      case '\"': *p = '\"'; break;
+      case '\\'': *p = '\\''; break;
+      case '?': *p = '?'; break;
+      case ' ': *p = ' '; break;
+
+      case '0'...'7':           /* octal escape - always 3 digits */
+        m = 3;
+        if (p[2] >= '0' && p[2] <= '7' &&
+            p[3] >= '0' && p[3] <= '7') {
+          c = (p[1] - '0') * 0100 + (p[2] - '0') * 010 + (p[3] - '0');
+          if (c < 1 || c > 255)
+            goto error;
+          *p = c;
+        }
+        else
+          goto error;
+        break;
+
+      case 'x':                 /* hex escape - always 2 digits */
+        m = 3;
+        if (isxdigit (p[2]) && isxdigit (p[3])) {
+          c = hexdigit (p[2]) * 0x10 + hexdigit (p[3]);
+          if (c < 1 || c > 255)
+            goto error;
+          *p = c;
+        }
+        else
+          goto error;
+        break;
+
+      default:
+      error:
+        fprintf (stderr, \"%%s: invalid escape sequence in string (starting at offset %%d)\\n\",
+                 \"kokot\", (int) (p - start));
+        return -1;
+      }
+      memmove (p+1, p+1+m, strlen (p+1+m) + 1);
+    }
+  }
+
+//  if (!*p) {
+//    fprintf (stderr, \"%%s: unterminated double quote\\n\", \"kokot\");
+//    return -1;
+//  }
+
+  *p = '\\0';
+  return p - start;
+}
+
+static char *
+escape_whitespace (char *p)
+{
+  char *start = p;
+  ssize_t cnt = 0;
+
+  for (; *p; p++) {
+    if (*p == ' ') {
+      ++cnt;
+    }
+  }
+  char *new = xmalloc(strlen(start) + cnt + 1);
+  strcpy(new, start);
+  for (p = start; *p; p++) {
+    if (*p == ' ') {
+      memmove(new + (p - start) + 1, p, strlen(p));
+      *(new + (p - start)) = '\\\\';
+    }
+  }
+
+  *(new + (p - start) + 1) = '\\0';
+  return new;
+}
+
 char **
 do_completion (const char *text, int start, int end)
 {
@@ -856,11 +960,36 @@ do_completion (const char *text, int start, int end)
 #ifdef HAVE_LIBREADLINE
   rl_completion_append_character = ' ';
 
-  if (start == 0)
+  if (start == 0) {
+//    rl_filename_quoting_desired = 0;
     matches = RL_COMPLETION_MATCHES (text, generator);
-  else if (complete_dest_paths)
+  } else if (complete_dest_paths) {
+//    rl_filename_quoting_desired = 1;
+    int p = rl_point;
+    while (p - 1 > 0) {
+      if (rl_line_buffer[--p] == ' ' &&
+          rl_line_buffer[--p] == '\\\\') {
+//        fprintf(stderr, \"found a escaped whitespace!\\n\");
+        while(p && (rl_line_buffer[--p] != ' ' || rl_line_buffer[p] != '\\\\'));
+        char *n = strdup(rl_line_buffer + p + 1);
+        parse_quoted_string(n);
+//        fprintf(stderr, \"parsed is: '%%s'\\n\", n);
+        text = n;
+        break;
+      }
+    }
+//    fprintf(stderr, \"input text:'%%s' '%%s' %%d\\n\", text, rl_line_buffer, rl_point);
     matches = RL_COMPLETION_MATCHES (text, complete_dest_paths_generator);
+  };
 #endif
+  char **x = matches;
+  do {
+    if (!x) break;
+    fprintf(stderr, \"%%s\\n\", *x);
+    *x = escape_whitespace(*x);
+    fprintf(stderr, \"after whitespace escape: '%%s'\\n\", *x);
+  } while(*(++x));
+
 
   return matches;
 }

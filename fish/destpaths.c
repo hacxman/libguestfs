@@ -239,8 +239,8 @@ complete_dest_paths_generator (const char *text, int state)
           : STREQLEN (word->name, text, len);
 
     if (matches) {
-      if (word->is_dir)
-        rl_completion_append_character = '/';
+//      if (word->is_dir)
+//        rl_completion_append_character = '/';
 
       return strdup (word->name);
     }

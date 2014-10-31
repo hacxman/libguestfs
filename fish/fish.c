@@ -48,6 +48,8 @@
 #include "closeout.h"
 #include "ignore-value.h"
 
+#include "rl.h"
+
 /* Return from parse_command_line.  See description below. */
 struct parsed_command {
   int status;
@@ -926,17 +928,6 @@ parse_command_line (char *buf, int *exit_on_error_rtn)
   return pcmd;
 }
 
-static int
-hexdigit (char d)
-{
-  switch (d) {
-  case '0'...'9': return d - '0';
-  case 'a'...'f': return d - 'a' + 10;
-  case 'A'...'F': return d - 'A' + 10;
-  default: return -1;
-  }
-}
-
 /* Parse double-quoted strings, replacing backslash escape sequences
  * with the true character.  Since the string is returned in place,
  * the escapes must make the string shorter.
@@ -945,6 +936,7 @@ static ssize_t
 parse_quoted_string (char *p)
 {
   char *start = p;
+  fprintf(stderr, "fish.c: parse_quoted_string called\n");
 
   for (; *p && *p != '"'; p++) {
     if (*p == '\\') {
@@ -962,6 +954,7 @@ parse_quoted_string (char *p)
       case '"': *p = '"'; break;
       case '\'': *p = '\''; break;
       case '?': *p = '?'; break;
+      case ' ': *p = ' '; fprintf(stderr, "found escaped space\n"); break;
 
       case '0'...'7':           /* octal escape - always 3 digits */
         m = 3;
@@ -1477,6 +1470,12 @@ initialize_readline (void)
 
   rl_readline_name = "guestfish";
   rl_attempted_completion_function = do_completion;
+
+  rl_completer_quote_characters = "\"\\";
+  rl_filename_quote_characters  = " ";
+  rl_filename_quoting_desired = 1;
+  rl_filename_quoting_function = bsquote_filename;
+  rl_filename_dequoting_function = debsquote_filename;
 
   /* Note that .inputrc (or /etc/inputrc) is not read until the first
    * call the readline(), which happens later.  Therefore, these
