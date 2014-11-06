@@ -17,7 +17,7 @@
 
 include $(top_srcdir)/subdir-rules.mk
 
-check_PROGRAMS = testquoting
+check_PROGRAMS = testquoting testreadline
 
 testquoting_SOURCES = \
 	testquoting.c \
@@ -30,6 +30,15 @@ testquoting_CPPFLAGS = \
 
 #testquoting_LDADD = $(top_builddir)/fish/rl.o
 
+testreadline_SOURCES = \
+	testreadline.c
+
+testreadline_CPPFLAGS = \
+	-I$(top_srcdir)/src -I$(top_builddir)/src \
+	-I$(top_srcdir)/fish -I$(top_builddir)/fish \
+	-I$(top_srcdir)/gnulib/lib -I$(top_builddir)/gnulib/lib
+
+testreadline_LDADD = $(top_builddir)/fish/rl.o -lreadline
 
 TESTS_ENVIRONMENT = $(top_builddir)/run --test
 
