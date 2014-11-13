@@ -16,7 +16,21 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-static int
+#include <config.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <gettext.h>
+#include <errno.h>
+
+#include <c-ctype.h>
+
+#include "guestfs.h"
+#include "guestfs-internal-frontend.h"
+#include "rl.h"
+
+int
 hexdigit (char d)
 {
   switch (d) {
@@ -27,12 +41,14 @@ hexdigit (char d)
   }
 }
 
-static ssize_t
-parse_quoted_string (char *p)
+/* backslash unescape for readline */
+char *
+bs_unescape_filename (const char *str)
 {
-  char *start = p;
+  char *p = strdup (str);
+  const char *start = p;
 
-  for (; *p && *p != '"'; p++) {
+  for (; *p; p++) {
     if (*p == '\\') {
       int m = 1, c;
 
@@ -48,6 +64,7 @@ parse_quoted_string (char *p)
       case '"': *p = '"'; break;
       case '\'': *p = '\''; break;
       case '?': *p = '?'; break;
+      case ' ': *p = ' '; break;
 
       case '0'...'7':           /* octal escape - always 3 digits */
         m = 3;
@@ -78,17 +95,63 @@ parse_quoted_string (char *p)
       error:
         fprintf (stderr, _("%s: invalid escape sequence in string (starting at offset %d)\n"),
                  program_name, (int) (p - start));
-        return -1;
+        return NULL;
       }
       memmove (p+1, p+1+m, strlen (p+1+m) + 1);
     }
   }
 
-  if (!*p) {
-    fprintf (stderr, _("%s: unterminated double quote\n"), program_name);
-    return -1;
+  return (char *)start;
+}
+
+/* backslash scape */
+char *
+bs_escape_filename (const char *p)
+{
+  const char *start = p;
+  /* four times original length - if all chars are unprintable
+   * new string would be \xXY\xWZ */
+  char *n = malloc (strlen (p) * 4 + 1);
+  char *nstart = n;
+
+  for (; *p; p++, n++) {
+      int m = 1;
+
+      switch (*p) {
+      case '\\': break;
+      case '\a': *(n++) = '\\'; *n = 'a'; break;
+      case '\b': *(n++) = '\\'; *n = 'b'; break;
+      case '\f': *(n++) = '\\'; *n = 'f'; break;
+      case '\n': *(n++) = '\\'; *n = 'n'; break;
+      case '\r': *(n++) = '\\'; *n = 'r'; break;
+      case '\t': *(n++) = '\\'; *n = 't'; break;
+      case '\v': *(n++) = '\\'; *n = 'v'; break;
+      case '"':  *(n++) = '\\'; *n = '"'; break;
+      case '\'': *(n++) = '\\'; *n = '\''; break;
+      case '?':  *(n++) = '\\'; *n = '?'; break;
+      case ' ':  *(n++) = '\\'; *n = ' '; break;
+
+      default:
+        /* Hexadecimal escape unprintable character. This violates identity
+         * after composition of bs_escape_filename after bs_unescape_filename
+         * (i.e. can escape some characters differently). */
+        if (!c_isprint (*p)) {
+          int r = sprintf (n, "\\x%x", (int) (*p & 0xff)) - 1;
+          if (r < 0) {
+            return NULL;
+          }
+          n += r;
+        } else {
+          *n = *p;
+        }
+        break;
+      error:
+        fprintf (stderr, _("%s: invalid escape sequence in string (starting at offset %d)\n"),
+                 program_name, (int) (p - start));
+        return NULL;
+      }
   }
 
-  *p = '\0';
-  return p - start;
+  *n = '\0';
+  return nstart;
 }
