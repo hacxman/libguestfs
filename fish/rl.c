@@ -43,7 +43,7 @@ hexdigit (char d)
 
 /* backslash unescape for readline */
 char *
-bs_unescape_filename (const char *str)
+bs_unescape_filename (const char *str, int rtype, char *qcp)
 {
   char *p = strdup (str);
   const char *start = p;
@@ -106,7 +106,7 @@ bs_unescape_filename (const char *str)
 
 /* backslash scape */
 char *
-bs_escape_filename (const char *p)
+bs_escape_filename (const char *p, int rtype, char *qcp)
 {
   const char *start = p;
   /* four times original length - if all chars are unprintable

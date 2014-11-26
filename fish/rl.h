@@ -19,7 +19,7 @@
 #ifndef _FISH_RL_H
 #define _FISH_RL_H
 
-extern char * bs_escape_filename (const char *p);
-extern char * bs_unescape_filename (const char *p);
+extern char * bs_escape_filename (const char *p, int, char*);
+extern char * bs_unescape_filename (const char *p, int, char*);
 
 #endif /* !_FISH_RL_H */
