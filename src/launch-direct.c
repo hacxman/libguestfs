@@ -512,7 +512,7 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
        * the if=... at the end.
        */
       param = safe_asprintf
-        (g, "file=%s%s,cache=%s%s%s%s%s%s%s,id=hd%zu",
+        (g, "file=%s%s,cache=%s%s%s%s%s%s%s%s,id=hd%zu",
          escaped_file,
          drv->readonly ? ",snapshot=on" : "",
          drv->cachemode ? drv->cachemode : "writeback",
@@ -521,6 +521,7 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
          drv->src.format ? drv->src.format : "",
          drv->disk_label ? ",serial=" : "",
          drv->disk_label ? drv->disk_label : "",
+         drv->detectzeros ? ",detect-zeroes=on" : "",
          drv->copyonread ? ",copy-on-read=on" : "",
          i);
     }
@@ -528,11 +529,12 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
       /* Writable qcow2 overlay on top of read-only drive. */
       escaped_file = qemu_escape_param (g, drv->overlay);
       param = safe_asprintf
-        (g, "file=%s,cache=unsafe,format=qcow2%s%s,id=hd%zu",
+        (g, "file=%s,cache=unsafe,format=qcow2%s%s,id=hd%zu,detect-zeroes=%s",
          escaped_file,
          drv->disk_label ? ",serial=" : "",
          drv->disk_label ? drv->disk_label : "",
-         i);
+         i,
+         drv->detectzeros ? "on" : "off");
     }
 
     /* If there's an explicit 'iface', use it.  Otherwise default to

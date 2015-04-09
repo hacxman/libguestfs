@@ -63,6 +63,7 @@ struct drive_create_data {
   const char *cachemode;
   enum discard discard;
   bool copyonread;
+  bool detectzeros;
 };
 
 COMPILE_REGEXP (re_hostname_port, "(.*):(\\d+)$", 0)
@@ -116,6 +117,7 @@ create_drive_file (guestfs_h *g,
   drv->cachemode = data->cachemode ? safe_strdup (g, data->cachemode) : NULL;
   drv->discard = data->discard;
   drv->copyonread = data->copyonread;
+  drv->detectzeros = data->detectzeros;
 
   if (data->readonly) {
     if (create_overlay (g, drv) == -1) {
@@ -152,6 +154,7 @@ create_drive_non_file (guestfs_h *g,
   drv->cachemode = data->cachemode ? safe_strdup (g, data->cachemode) : NULL;
   drv->discard = data->discard;
   drv->copyonread = data->copyonread;
+  drv->detectzeros = data->detectzeros;
 
   if (data->readonly) {
     if (create_overlay (g, drv) == -1) {
@@ -504,7 +507,7 @@ static char *
 drive_to_string (guestfs_h *g, const struct drive *drv)
 {
   return safe_asprintf
-    (g, "%s%s%s%s protocol=%s%s%s%s%s%s%s%s%s%s%s",
+    (g, "%s%s%s%s protocol=%s%s%s%s%s%s%s%s%s%s%s%s",
      drv->src.u.path,
      drv->readonly ? " readonly" : "",
      drv->src.format ? " format=" : "",
@@ -520,7 +523,8 @@ drive_to_string (guestfs_h *g, const struct drive *drv)
      drv->cachemode ? : "",
      drv->discard == discard_disable ? "" :
      drv->discard == discard_enable ? " discard=enable" : " discard=besteffort",
-     drv->copyonread ? " copyonread" : "");
+     drv->copyonread ? " copyonread" : "",
+     drv->detectzeros ? " detect-zeroes=on" : "");
 }
 
 /* Add struct drive to the g->drives vector at the given index. */
@@ -745,6 +749,9 @@ guestfs_impl_add_drive_opts (guestfs_h *g, const char *filename,
   data.nr_servers = 0;
   data.servers = NULL;
   data.exportname = filename;
+
+  data.detectzeros = optargs->bitmask & GUESTFS_ADD_DRIVE_OPTS_DETECTZEROS_BITMASK
+    ? optargs->detectzeros : false;
 
   data.readonly = optargs->bitmask & GUESTFS_ADD_DRIVE_OPTS_READONLY_BITMASK
     ? optargs->readonly : false;
