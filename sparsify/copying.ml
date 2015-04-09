@@ -190,7 +190,8 @@ You can ignore this warning or change it to a hard failure using the
     if verbose then g#set_verbose true;
 
     (* Note that the temporary overlay disk is always qcow2 format. *)
-    g#add_drive ~format:"qcow2" ~readonly:false ~cachemode:"unsafe" overlaydisk;
+    g#add_drive ~format:"qcow2" ~readonly:false ~cachemode:"unsafe" overlaydisk
+                ~detectzeros: true;
 
     if not quiet then Progress.set_up_progress_bar ~machine_readable g;
     g#launch ();
