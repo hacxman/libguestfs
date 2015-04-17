@@ -478,11 +478,16 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
 
   ITER_DRIVES (g, i, drv) {
     CLEANUP_FREE char *file = NULL, *escaped_file = NULL, *param = NULL;
+    const char *detect_zeroes = "";
+    int major = data->qemu_version_major, minor = data->qemu_version_minor;
+    unsigned long qemu_version = major * 1000000 + minor * 1000;
+
+    if (drv->detectzeros && (major >= 2 || (major == 2 && minor >= 1))) {
+      detect_zeroes = ",detect-zeroes=on";
+    }
 
     if (!drv->overlay) {
       const char *discard_mode = "";
-      int major = data->qemu_version_major, minor = data->qemu_version_minor;
-      unsigned long qemu_version = major * 1000000 + minor * 1000;
 
       switch (drv->discard) {
       case discard_disable:
@@ -521,7 +526,7 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
          drv->src.format ? drv->src.format : "",
          drv->disk_label ? ",serial=" : "",
          drv->disk_label ? drv->disk_label : "",
-         drv->detectzeros ? ",detect-zeroes=on" : "",
+         detect_zeroes,
          drv->copyonread ? ",copy-on-read=on" : "",
          i);
     }
@@ -529,12 +534,12 @@ launch_direct (guestfs_h *g, void *datav, const char *arg)
       /* Writable qcow2 overlay on top of read-only drive. */
       escaped_file = qemu_escape_param (g, drv->overlay);
       param = safe_asprintf
-        (g, "file=%s,cache=unsafe,format=qcow2%s%s,id=hd%zu,detect-zeroes=%s",
+        (g, "file=%s,cache=unsafe,format=qcow2%s%s%s,id=hd%zu",
          escaped_file,
          drv->disk_label ? ",serial=" : "",
          drv->disk_label ? drv->disk_label : "",
-         i,
-         drv->detectzeros ? "on" : "off");
+         detect_zeroes,
+         i);
     }
 
     /* If there's an explicit 'iface', use it.  Otherwise default to
