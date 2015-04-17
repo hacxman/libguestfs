@@ -895,7 +895,7 @@ static int construct_libvirt_xml_devices (guestfs_h *g, const struct libvirt_xml
 static int construct_libvirt_xml_qemu_cmdline (guestfs_h *g, const struct libvirt_xml_params *params, xmlTextWriterPtr xo);
 static int construct_libvirt_xml_disk (guestfs_h *g, const struct backend_libvirt_data *data, xmlTextWriterPtr xo, struct drive *drv, size_t drv_index);
 static int construct_libvirt_xml_disk_target (guestfs_h *g, xmlTextWriterPtr xo, size_t drv_index);
-static int construct_libvirt_xml_disk_driver_qemu (guestfs_h *g, const struct backend_libvirt_data *data, struct drive *drv, xmlTextWriterPtr xo, const char *format, const char *cachemode, enum discard discard, bool copyonread);
+static int construct_libvirt_xml_disk_driver_qemu (guestfs_h *g, const struct backend_libvirt_data *data, struct drive *drv, xmlTextWriterPtr xo, const char *format, const char *cachemode, enum discard discard, bool copyonread, bool detect_zeroes);
 static int construct_libvirt_xml_disk_address (guestfs_h *g, xmlTextWriterPtr xo, size_t drv_index);
 static int construct_libvirt_xml_disk_source_hosts (guestfs_h *g, xmlTextWriterPtr xo, const struct drive_source *src);
 static int construct_libvirt_xml_disk_source_seclabel (guestfs_h *g, const struct backend_libvirt_data *data, xmlTextWriterPtr xo);
@@ -1389,7 +1389,8 @@ construct_libvirt_xml_disk (guestfs_h *g,
 
       if (construct_libvirt_xml_disk_driver_qemu (g, data, drv,
                                                   xo, "qcow2", "unsafe",
-                                                  discard_disable, false)
+                                                  discard_disable, false,
+                                                  drv->detectzeros)
           == -1)
         return -1;
     }
@@ -1534,7 +1535,7 @@ construct_libvirt_xml_disk (guestfs_h *g,
 
       if (construct_libvirt_xml_disk_driver_qemu (g, data, drv, xo, format,
                                                   drv->cachemode ? : "writeback",
-                                                  drv->discard, false)
+                                                  drv->discard, false, drv->detectzeros)
           == -1)
         return -1;
     }
@@ -1577,7 +1578,8 @@ construct_libvirt_xml_disk_driver_qemu (guestfs_h *g,
                                         const char *format,
                                         const char *cachemode,
                                         enum discard discard,
-                                        bool copyonread)
+                                        bool copyonread,
+                                        bool detect_zeroes)
 {
   bool discard_unmap = false;
 
@@ -1605,6 +1607,10 @@ construct_libvirt_xml_disk_driver_qemu (guestfs_h *g,
     break;
   }
 
+  if (data->qemu_version < 2001000) {
+    detect_zeroes = false;
+  }
+
   start_element ("driver") {
     attribute ("name", "qemu");
     attribute ("type", format);
@@ -1613,6 +1619,8 @@ construct_libvirt_xml_disk_driver_qemu (guestfs_h *g,
       attribute ("discard", "unmap");
     if (copyonread)
       attribute ("copy_on_read", "on");
+    if (detect_zeroes)
+      attribute ("detect-zeroes", "on");
   } end_element ();
 
   return 0;
@@ -1699,7 +1707,8 @@ construct_libvirt_xml_appliance (guestfs_h *g,
 
     if (construct_libvirt_xml_disk_driver_qemu (g, params->data, NULL, xo,
                                                 "qcow2", "unsafe",
-                                                discard_disable, false) == -1)
+                                                discard_disable, false,
+                                                false) == -1)
       return -1;
 
     if (construct_libvirt_xml_disk_address (g, xo, params->appliance_index)
